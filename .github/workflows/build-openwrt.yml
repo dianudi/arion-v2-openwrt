@@ -36,20 +36,26 @@ jobs:
           path: "arion_v2_files"
           ref: "main"
 
-      - name: Overlay arion_v2 files
+      - name: Apply modifications
         run: |
-          echo "Copying device-specific files from arion_v2 branch..."
+          echo "Modifying mt7621.mk..."
+          sed -i '/^define Device\/bolt_arion/i \
+          define Device/bolt_arion-v2\n  $(Device/dsa-migration)\n  $(Device/uimage-lzma-loader)\n  IMAGE_SIZE := 32448k\n  DEVICE_VENDOR := BOLT\n  DEVICE_MODEL := Arion-V2\n  DEVICE_PACKAGES := kmod-mt7603 kmod-mt76x2 kmod-usb2 kmod-usb3 kmod-usb-net-rndis usbutils\nendef\nTARGET_DEVICES += bolt_arion-v2\n' target/linux/ramips/image/mt7621.mk
+          echo "Modifying 02_network..."
+          sed -i '/^	bolt,arion)/i \
+          bolt,arion-v2)\nucidef_set_interfaces_lan_wan "lan" "wan"\n;;' target/linux/ramips/mt7621/base-files/etc/board.d/02_network
+           
+          echo "Copying device tree and config..."
           cp arion_v2_files/target/linux/ramips/dts/mt7621_bolt_arion-v2.dts target/linux/ramips/dts/
-          cp arion_v2_files/target/linux/ramips/image/mt7621.mk target/linux/ramips/image/
-          cp arion_v2_files/target/linux/ramips/mt7621/base-files/etc/board.d/02_network target/linux/ramips/mt7621/base-files/etc/board.d/
-          cp arion_v2_files/.config.seed ./.config.seed
-          echo "Files copied successfully."
+          cp arion_v2_files/.config.seed ./.config
+
+          echo "Modifications applied successfully."
 
       - name: Cache OpenWrt downloads
         uses: actions/cache@v3
         with:
           path: dl
-          key: ${{ runner.os }}-openwrt-dl-${{ hashFiles('.config.seed') }}
+          key: ${{ runner.os }}-openwrt-dl-${{ hashFiles('.config') }}
           restore-keys: |
             ${{ runner.os }}-openwrt-dl-
 
@@ -57,11 +63,6 @@ jobs:
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-      - name: Copy build configuration
-        run: |
-          cp .config.seed .config
-          echo "Using .config.seed for build configuration."
 
       - name: Build the firmware
         run: |
@@ -75,10 +76,10 @@ jobs:
           name: openwrt-firmware-${{ steps.get_latest_tag.outputs.tag }}-arion_v2
           path: bin/targets/**/*.bin
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.get_latest_tag.outputs.tag }}
-          files: bin/targets/**/*.bin
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Create Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     tag_name: ${{ steps.get_latest_tag.outputs.tag }}
+      #     files: bin/targets/**/*.bin
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
